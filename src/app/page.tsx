@@ -15,50 +15,17 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 const navigation = [
-  { label: "Dashboard", icon: LayoutDashboard, active: true },
-  { label: "Transactions", icon: Wallet },
-  { label: "Audits", icon: ClipboardCheck },
-  { label: "Reports", icon: BarChart3 },
-  { label: "Users", icon: Users },
-  { label: "Settings", icon: Settings },
-];
-
-const transactions = [
-  {
-    reference: "TRX-2026-001",
-    description: "Office Equipment",
-    category: "Equipment",
-    amount: "₦850,000",
-    type: "expense",
-    date: "02 Sep 2026",
-  },
-  {
-    reference: "TRX-2026-002",
-    description: "Client Payment",
-    category: "Revenue",
-    amount: "₦2,400,000",
-    type: "income",
-    date: "01 Sep 2026",
-  },
-  {
-    reference: "TRX-2026-003",
-    description: "Internet & Utilities",
-    category: "Utilities",
-    amount: "₦185,000",
-    type: "expense",
-    date: "31 Aug 2026",
-  },
-  {
-    reference: "TRX-2026-004",
-    description: "Consulting Revenue",
-    category: "Revenue",
-    amount: "₦1,750,000",
-    type: "income",
-    date: "29 Aug 2026",
-  },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/", active: true },
+  { label: "Transactions", icon: Wallet, href: "/transactions" },
+  { label: "Audits", icon: ClipboardCheck, href: "/audits" },
+  { label: "Reports", icon: BarChart3, href: "/reports" },
+  { label: "Users", icon: Users, href: "/users" },
+  { label: "Settings", icon: Settings, href: "/settings" },
 ];
 
 const chartData = [
@@ -71,7 +38,52 @@ const chartData = [
 ];
 
 export default function Home() {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  type DashboardTransaction = {
+    id: string;
+    reference: string;
+    description: string;
+    category: string;
+    type: "income" | "expense";
+    amount: number;
+    transaction_date: string;
+    status: "Completed" | "Pending" | "Cancelled";
+    created_at: string;
+  };
+
+  const [transactions, setTransactions] = useState<DashboardTransaction[]>([]);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadDashboard() {
+      setDashboardLoading(true);
+
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("id, reference, description, category, type, amount, transaction_date, status, created_at")
+        .order("transaction_date", { ascending: false })
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        setTransactions([]);
+      } else {
+        setTransactions(data ?? []);
+      }
+
+      setDashboardLoading(false);
+    }
+
+    loadDashboard();
+  }, [supabase]);
+
+  const validTransactions = transactions.filter((transaction) => transaction.status !== "Cancelled");
+  const totalIncome = validTransactions.filter((transaction) => transaction.type === "income").reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+  const totalExpenses = validTransactions.filter((transaction) => transaction.type === "expense").reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+  const netPosition = totalIncome - totalExpenses;
+  const formatNaira = (amount: number) => new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(amount);
+  const formatCompactNaira = (amount: number) => amount >= 1000000 ? "N" + (amount / 1000000).toFixed(2) + "M" : amount >= 1000 ? "N" + (amount / 1000).toFixed(1) + "K" : formatNaira(amount);
 
   return (
     <main className="min-h-screen bg-[#f7f8fa] text-slate-900">
@@ -110,11 +122,11 @@ export default function Home() {
               return (
                 <button
                   key={item.label}
-                  className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
-                    item.active
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
+                  onClick={() => {
+                    router.push(item.href);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition `}
                 >
                   <Icon size={19} />
                   {item.label}
@@ -179,7 +191,7 @@ export default function Home() {
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               title="Total Income"
-              value="₦18.45M"
+              value={dashboardLoading ? "..." : formatCompactNaira(totalIncome)}
               change="+12.8%"
               positive
               icon={<ArrowUpRight size={20} />}
@@ -187,7 +199,7 @@ export default function Home() {
 
             <StatCard
               title="Total Expenses"
-              value="₦9.72M"
+              value={dashboardLoading ? "..." : formatCompactNaira(totalExpenses)}
               change="+6.4%"
               positive={false}
               icon={<ArrowDownRight size={20} />}
@@ -195,7 +207,7 @@ export default function Home() {
 
             <StatCard
               title="Net Position"
-              value="₦8.73M"
+              value={dashboardLoading ? "..." : formatCompactNaira(netPosition)}
               change="+18.2%"
               positive
               icon={<Wallet size={20} />}
@@ -244,7 +256,7 @@ export default function Home() {
                       />
                     </div>
 
-                    <span className="absolute mt-[285px] text-[11px] text-slate-400">
+                    <span className="absolute mt-71.25 text-[11px] text-slate-400">
                       {item.month}
                     </span>
                   </div>
@@ -315,14 +327,14 @@ export default function Home() {
                 </p>
               </div>
 
-              <button className="flex items-center gap-2 text-sm font-semibold text-slate-900 hover:underline">
+              <button onClick={() => router.push("/transactions")} className="flex items-center gap-2 text-sm font-semibold text-slate-900 hover:underline">
                 <FileText size={16} />
                 View all
               </button>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-left">
+              <table className="w-full min-w-175 text-left">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-6 py-4 font-semibold">Reference</th>
@@ -336,7 +348,7 @@ export default function Home() {
                 </thead>
 
                 <tbody className="divide-y divide-slate-100">
-                  {transactions.map((transaction) => (
+                  {transactions.slice(0, 4).map((transaction) => (
                     <tr
                       key={transaction.reference}
                       className="transition hover:bg-slate-50"
@@ -356,7 +368,7 @@ export default function Home() {
                       </td>
 
                       <td className="px-6 py-4 text-sm text-slate-500">
-                        {transaction.date}
+                        {new Date(transaction.transaction_date).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" })}
                       </td>
 
                       <td
@@ -366,8 +378,7 @@ export default function Home() {
                             : "text-slate-900"
                         }`}
                       >
-                        {transaction.type === "income" ? "+" : "-"}
-                        {transaction.amount}
+                        {transaction.type === "income" ? "+" : "-"}{formatNaira(Number(transaction.amount))}
                       </td>
                     </tr>
                   ))}
